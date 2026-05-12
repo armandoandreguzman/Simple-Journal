@@ -1328,23 +1328,9 @@ export default function TradingJournal() {
       const profit = parseFloat(cols[12]) || 0;
       const pips = parseFloat(cols[13]) || 0;
       const volume = parseFloat(cols[3]) || 0;
-      // Calculate R using SL pip distance vs trade pip distance
-      let resultR = "";
-      const isLong = type === "buy";
-      const slPips = sl ? Math.abs(openPrice - sl) : 0;
-      const tradePips = Math.abs(closePrice - openPrice);
-      // For a valid SL: long = SL below entry, short = SL above entry
-      const validSL = sl && (
-        (isLong && sl < openPrice) ||
-        (!isLong && sl > openPrice)
-      );
-      if (validSL && slPips > 0 && tradePips > 0) {
-        const r = tradePips / slPips;
-        resultR = +(profit > 0 ? r : -r).toFixed(2);
-      } else if (pips && pips !== 0) {
-        // Fallback: use pips as R proxy (1R = 10 pips baseline)
-        resultR = +(pips / 10).toFixed(2);
-      }
+      // Use pips directly as R-multiple proxy
+      // FTMO pips column already represents trade distance in meaningful units
+      let resultR = pips ? +pips.toFixed(2) : "";
 
       trades.push({
         date, entryTime, exitTime,
