@@ -1294,6 +1294,19 @@ export default function TradingJournal() {
   };
   const sef2 = f => e => setEditForm(p => ({ ...p, [f]: e.target.value }));
 
+  // ── SCREENSHOT UPLOAD ──
+  const uploadScreenshot = async (file) => {
+    if (!file || !user) return null;
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    const { data, error } = await supabase.storage
+      .from("screenshots")
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) { console.error("Upload error:", error); return null; }
+    const { data: urlData } = supabase.storage.from("screenshots").getPublicUrl(path);
+    return urlData.publicUrl;
+  };
+
   // ── FTMO CSV IMPORT ──
   const parseFTMOcsv = (text) => {
     const lines = text.trim().split("\n").filter(l => l.trim());
@@ -1973,17 +1986,30 @@ export default function TradingJournal() {
                         <textarea className="f-textarea" placeholder="What would you do differently? What did you execute well?" value={form.lessonsLearned} onChange={sfe("lessonsLearned")} style={{minHeight:70}}/>
                       </div>
                       <div className="f-group">
-                        <label className="f-label">Chart / Screenshot URL</label>
-                        <input className="f-input" placeholder="Paste TradingView or image URL…" value={form.screenshotUrl} onChange={sfe("screenshotUrl")}/>
-                        {form.screenshotUrl
-                          ? <div style={{marginTop:8,padding:"9px 12px",background:"var(--teal-faint)",borderRadius:"var(--rad)",border:"1px solid rgba(0,212,180,0.2)",fontSize:12,color:"var(--teal)"}}>
-                              ✓ Screenshot linked
-                            </div>
-                          : <div style={{marginTop:8,border:"1px dashed var(--border2)",borderRadius:"var(--rad)",padding:"1.25rem",textAlign:"center",color:"var(--text3)",fontSize:11}}>
-                              {/* TODO: Add real file input for upload */}
-                              Drag & drop or paste a chart URL above
-                            </div>
-                        }
+                        <label className="f-label">Chart Screenshot</label>
+                        {form.screenshotUrl ? (
+                          <div style={{position:"relative",borderRadius:"var(--rad-lg)",overflow:"hidden",border:"1px solid var(--border2)"}}>
+                            <img src={form.screenshotUrl} alt="Trade chart" style={{width:"100%",maxHeight:280,objectFit:"cover",display:"block"}}/>
+                            <button
+                              onClick={()=>setForm(p=>({...p,screenshotUrl:""}))}
+                              style={{position:"absolute",top:8,right:8,width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,0.7)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              ×
+                            </button>
+                          </div>
+                        ) : (
+                          <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"1.5rem",border:"1.5px dashed var(--border2)",borderRadius:"var(--rad-lg)",cursor:"pointer",background:"var(--bg3)",transition:"border-color 0.15s"}}
+                            onMouseEnter={e=>e.currentTarget.style.borderColor="var(--teal)"}
+                            onMouseLeave={e=>e.currentTarget.style.borderColor=""}>
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            <div style={{fontSize:13,color:"var(--text2)",textAlign:"center"}}>Click to upload chart screenshot<br/><span style={{fontSize:11,color:"var(--text3)"}}>PNG, JPG up to 10MB</span></div>
+                            <input type="file" accept="image/*" style={{display:"none"}} onChange={async(e)=>{
+                              const file = e.target.files[0];
+                              if (!file) return;
+                              const url = await uploadScreenshot(file);
+                              if (url) setForm(p=>({...p,screenshotUrl:url}));
+                            }}/>
+                          </label>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2824,7 +2850,13 @@ export default function TradingJournal() {
                   <div className="pill-row">{detailTrade.ltfcTags.map(t=><span key={t} className="chip sel" style={{cursor:"default",fontSize:11}}>{t}</span>)}</div>
                 </div>
               )}
-              {detailTrade.notes&&<div style={{marginBottom:12}}><div className="md-label" style={{marginBottom:5}}>Notes</div><div style={{fontSize:13,color:"var(--text2)",lineHeight:1.7}}>{detailTrade.notes}</div></div>}
+              {detailTrade.screenshotUrl&&(
+              <div style={{marginBottom:12}}>
+                <div className="md-label" style={{marginBottom:8}}>Chart Screenshot</div>
+                <img src={detailTrade.screenshotUrl} alt="Trade chart" style={{width:"100%",borderRadius:"var(--rad)",border:"1px solid var(--border2)",maxHeight:320,objectFit:"cover",cursor:"pointer"}} onClick={()=>window.open(detailTrade.screenshotUrl,"_blank")}/>
+              </div>
+            )}
+            {detailTrade.notes&&<div style={{marginBottom:12}}><div className="md-label" style={{marginBottom:5}}>Notes</div><div style={{fontSize:13,color:"var(--text2)",lineHeight:1.7}}>{detailTrade.notes}</div></div>}
               {detailTrade.lessonsLearned&&<div style={{marginBottom:12}}><div className="md-label" style={{marginBottom:5}}>Lessons</div><div style={{fontSize:13,color:"var(--text2)",lineHeight:1.7}}>{detailTrade.lessonsLearned}</div></div>}
               {detailTrade.aiAnalysis&&<>
                 <div className="divider"/>
@@ -2997,6 +3029,29 @@ export default function TradingJournal() {
               </div>
 
               {/* Notes */}
+              {/* Screenshot in edit mode */}
+              <div className="f-group" style={{marginBottom:12}}>
+                <label className="f-label">Chart Screenshot</label>
+                {editForm.screenshotUrl ? (
+                  <div style={{position:"relative",borderRadius:"var(--rad-lg)",overflow:"hidden",border:"1px solid var(--border2)"}}>
+                    <img src={editForm.screenshotUrl} alt="Trade chart" style={{width:"100%",maxHeight:200,objectFit:"cover",display:"block"}}/>
+                    <button onClick={()=>setEditForm(p=>({...p,screenshotUrl:""}))}
+                      style={{position:"absolute",top:8,right:8,width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,0.7)",border:"none",color:"#fff",fontSize:14,cursor:"pointer"}}>×</button>
+                  </div>
+                ) : (
+                  <label style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"1.5px dashed var(--border2)",borderRadius:"var(--rad)",cursor:"pointer",background:"var(--bg3)"}}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <span style={{fontSize:12,color:"var(--text2)"}}>Upload chart screenshot</span>
+                    <input type="file" accept="image/*" style={{display:"none"}} onChange={async(e)=>{
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const url = await uploadScreenshot(file);
+                      if (url) setEditForm(p=>({...p,screenshotUrl:url}));
+                    }}/>
+                  </label>
+                )}
+              </div>
+
               <div className="f-group" style={{marginBottom:12}}>
                 <label className="f-label">Notes</label>
                 <textarea className="f-textarea" value={editForm.notes} onChange={sef2("notes")}/>
