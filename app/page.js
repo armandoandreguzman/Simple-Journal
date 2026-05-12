@@ -1328,6 +1328,20 @@ export default function TradingJournal() {
       const profit = parseFloat(cols[12]) || 0;
       const pips = parseFloat(cols[13]) || 0;
       const volume = parseFloat(cols[3]) || 0;
+      // Calculate R-multiple: profit / risk
+      // Risk = price distance to SL * volume * pip value
+      let resultR = "";
+      if (sl && openPrice && closePrice && profit !== 0) {
+        const slDist = Math.abs(openPrice - sl);
+        const tradeDist = Math.abs(closePrice - openPrice);
+        if (slDist > 0 && tradeDist > 0) {
+          // R = how many SL distances did we travel
+          const r = tradeDist / slDist;
+          // sign: profit positive = win, negative = loss
+          resultR = +(profit > 0 ? r : -r).toFixed(2);
+        }
+      }
+
       trades.push({
         date, entryTime, exitTime,
         symbol: symbol.toUpperCase(),
@@ -1338,6 +1352,7 @@ export default function TradingJournal() {
         commissions: Math.abs(commissions),
         netPnL: profit,
         grossPnL: profit + Math.abs(commissions),
+        resultR: resultR || "",
         tradeStatus: profit > 0 ? "T/P" : profit < 0 ? "S/L" : "B/E",
         followedRules: "Yes", mistakeType: "None",
         confidenceLevel: 7, ltfcTags: [],
@@ -1372,6 +1387,7 @@ export default function TradingJournal() {
         entry_time: t.entryTime, exit_time: t.exitTime,
         lot_size: t.lotSize, pips: t.pips,
         commissions: t.commissions, gross_pnl: t.grossPnL,
+        result_r: t.resultR ? parseFloat(t.resultR) : null,
         net_pnl: t.netPnL, followed_rules: t.followedRules,
         mistake_type: t.mistakeType, confidence_level: t.confidenceLevel,
         ltfc_tags: [], notes: t.notes, ai_analysis: analysis,
