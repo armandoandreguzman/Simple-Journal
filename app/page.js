@@ -1058,6 +1058,9 @@ export default function TradingJournal() {
   const [editForm, setEditForm] = useState(null);
   const [calTab, setCalTab] = useState("Calendar");
   const [activeAccountId, setActiveAccountId] = useState("all"); // "all" or account id string
+  const [showImport, setShowImport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   // ── AUTH + DATA LOADING ──
   useEffect(() => {
@@ -1290,6 +1293,96 @@ export default function TradingJournal() {
     }
   };
   const sef2 = f => e => setEditForm(p => ({ ...p, [f]: e.target.value }));
+
+  // ── FTMO CSV IMPORT ──
+  const parseFTMOcsv = (text) => {
+    const lines = text.trim().split("\n").filter(l => l.trim());
+    if (lines.length < 2) return [];
+    // skip header
+    const rows = lines.slice(1);
+    const trades = [];
+    for (const line of rows) {
+      // handle quoted fields
+      const cols = [];
+      let cur = "", inQ = false;
+      for (const ch of line) {
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ""; }
+        else cur += ch;
+      }
+      cols.push(cur.trim());
+      // FTMO columns: Ticket,Open,Type,Volume,Symbol,Price,SL,TP,Close,Price,Swap,Commissions,Profit,Pips,Duration
+      if (cols.length < 13) continue;
+      const openDt = cols[1]?.replace(/"/g,"") || "";
+      const date = openDt.split(" ")[0] || "";
+      const entryTime = openDt.split(" ")[1]?.slice(0,5) || "";
+      const closeDt = cols[8]?.replace(/"/g,"") || "";
+      const exitTime = closeDt.split(" ")[1]?.slice(0,5) || "";
+      const type = cols[2]?.toLowerCase() || "";
+      const symbol = cols[4]?.replace(".sim","").replace(/"/g,"") || "";
+      const openPrice = parseFloat(cols[5]) || 0;
+      const sl = parseFloat(cols[6]) || 0;
+      const tp = parseFloat(cols[7]) || 0;
+      const closePrice = parseFloat(cols[9]) || 0;
+      const commissions = parseFloat(cols[11]) || 0;
+      const profit = parseFloat(cols[12]) || 0;
+      const pips = parseFloat(cols[13]) || 0;
+      const volume = parseFloat(cols[3]) || 0;
+      trades.push({
+        date, entryTime, exitTime,
+        symbol: symbol.toUpperCase(),
+        tradeType: type === "buy" ? "Long" : "Short",
+        openPrice, closePrice,
+        stopLoss: sl, takeProfit: tp,
+        pips, lotSize: volume,
+        commissions: Math.abs(commissions),
+        netPnL: profit,
+        grossPnL: profit + Math.abs(commissions),
+        tradeStatus: profit > 0 ? "T/P" : profit < 0 ? "S/L" : "B/E",
+        followedRules: "Yes", mistakeType: "None",
+        confidenceLevel: 7, ltfcTags: [],
+        notes: `Imported from FTMO · Ticket: ${cols[0]}`,
+      });
+    }
+    return trades;
+  };
+
+  const handleImportCSV = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !user) return;
+    setImporting(true);
+    setImportResult(null);
+    const text = await file.text();
+    const parsed = parseFTMOcsv(text);
+    if (!parsed.length) {
+      setImportResult({ error: "No trades found in file. Make sure it's an FTMO CSV export." });
+      setImporting(false);
+      return;
+    }
+    let success = 0, failed = 0;
+    for (const t of parsed) {
+      const analysis = analyzeTradeWithAI(t);
+      const { error } = await supabase.from("trades").insert({
+        user_id: user.id,
+        account_id: activeAccountId !== "all" ? activeAccountId : null,
+        symbol: t.symbol, date: t.date,
+        trade_type: t.tradeType, trade_status: t.tradeStatus,
+        open_price: t.openPrice, close_price: t.closePrice,
+        stop_loss: t.stopLoss, take_profit: t.takeProfit,
+        entry_time: t.entryTime, exit_time: t.exitTime,
+        lot_size: t.lotSize, pips: t.pips,
+        commissions: t.commissions, gross_pnl: t.grossPnL,
+        net_pnl: t.netPnL, followed_rules: t.followedRules,
+        mistake_type: t.mistakeType, confidence_level: t.confidenceLevel,
+        ltfc_tags: [], notes: t.notes, ai_analysis: analysis,
+      });
+      if (!error) success++; else failed++;
+    }
+    // Reload trades
+    await loadTrades(user.id);
+    setImportResult({ success, failed, total: parsed.length });
+    setImporting(false);
+  };
   const sf2 = f => v => setEditForm(p => ({ ...p, [f]: v }));
   const toggleLtfc2 = tag => setEditForm(p => ({
     ...p, ltfcTags: p.ltfcTags.includes(tag) ? p.ltfcTags.filter(t => t !== tag) : [...p.ltfcTags, tag]
@@ -1389,7 +1482,15 @@ export default function TradingJournal() {
                 {view==="weekly"&&"Weekly Report"}
               </div>
             </div>
-            <div className="tb-right">
+            <div className="tb-right" style={{gap:12}}>
+              <button
+                onClick={()=>setShowImport(true)}
+                style={{display:"flex",alignItems:"center",gap:6,padding:"5px 14px",borderRadius:"var(--rad)",border:"1px solid var(--border2)",background:"transparent",color:"var(--text2)",fontSize:12,fontWeight:500,cursor:"pointer",transition:"all 0.15s"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--teal)";e.currentTarget.style.color="var(--teal)"}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor="";e.currentTarget.style.color=""}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Import FTMO
+              </button>
               <div className="live-pip"/>
               {new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}
             </div>
@@ -2908,6 +3009,88 @@ export default function TradingJournal() {
           </div>
         </div>
       )}
+      {/* ════════════════════════════════
+          FTMO IMPORT MODAL
+      ════════════════════════════════ */}
+      {showImport && (
+        <div className="overlay" onClick={()=>{setShowImport(false);setImportResult(null);}}>
+          <div className="modal" style={{maxWidth:480}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-hdr">
+              <div className="modal-title">Import FTMO Trades</div>
+              <button className="modal-close" onClick={()=>{setShowImport(false);setImportResult(null);}}>×</button>
+            </div>
+
+            {/* Instructions */}
+            <div style={{background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:"var(--rad)",padding:"14px 16px",marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:600,color:"var(--teal)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>How to export from FTMO</div>
+              {["1. Log into app.ftmo.com","2. Click Accounts Overview → MetriX","3. Scroll down to Trading Journal","4. Click the blue Export button → CSV","5. Upload the file below"].map((s,i)=>(
+                <div key={i} style={{fontSize:12,color:"var(--text2)",marginBottom:4}}>{s}</div>
+              ))}
+            </div>
+
+            {/* Account selector */}
+            {accounts.length > 0 && (
+              <div style={{marginBottom:16}}>
+                <div className="f-label" style={{marginBottom:8}}>Import to Account</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+                  <button
+                    onClick={()=>setActiveAccountId("all")}
+                    style={{padding:"6px 14px",borderRadius:"var(--rad)",border:`1px solid ${activeAccountId==="all"?"var(--teal)":"var(--border2)"}`,background:activeAccountId==="all"?"var(--teal-faint)":"transparent",color:activeAccountId==="all"?"var(--teal)":"var(--text2)",fontSize:12,cursor:"pointer"}}>
+                    No specific account
+                  </button>
+                  {accounts.map(acc=>(
+                    <button key={acc.id}
+                      onClick={()=>setActiveAccountId(String(acc.id))}
+                      style={{padding:"6px 14px",borderRadius:"var(--rad)",border:`1px solid ${String(activeAccountId)===String(acc.id)?ACCOUNT_TYPE_COLORS[acc.type]:"var(--border2)"}`,background:String(activeAccountId)===String(acc.id)?`${ACCOUNT_TYPE_COLORS[acc.type]}18`:"transparent",color:String(activeAccountId)===String(acc.id)?ACCOUNT_TYPE_COLORS[acc.type]:"var(--text2)",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:6,height:6,borderRadius:"50%",background:ACCOUNT_TYPE_COLORS[acc.type]}}/>
+                      {acc.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* File upload */}
+            <div style={{marginBottom:16}}>
+              <div className="f-label" style={{marginBottom:8}}>Upload CSV File</div>
+              <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"2rem",border:"1.5px dashed var(--border2)",borderRadius:"var(--rad-lg)",cursor:"pointer",background:"var(--bg3)",transition:"border-color 0.15s"}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor="var(--teal)"}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=""}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <div style={{fontSize:13,color:"var(--text2)"}}>Click to select your FTMO CSV file</div>
+                <div style={{fontSize:11,color:"var(--text3)"}}>trading-journal.csv</div>
+                <input type="file" accept=".csv" style={{display:"none"}} onChange={handleImportCSV} disabled={importing}/>
+              </label>
+            </div>
+
+            {/* Status */}
+            {importing && (
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"var(--teal-faint)",borderRadius:"var(--rad)",border:"1px solid rgba(0,212,180,0.2)"}}>
+                <div style={{width:16,height:16,border:"2px solid var(--teal-faint)",borderTop:"2px solid var(--teal)",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+                <span style={{fontSize:13,color:"var(--teal)"}}>Importing trades…</span>
+              </div>
+            )}
+            {importResult && !importing && (
+              <div style={{padding:"12px 16px",borderRadius:"var(--rad)",background:importResult.error?"var(--red-faint)":"var(--green-faint)",border:`1px solid ${importResult.error?"rgba(232,81,74,0.25)":"rgba(15,190,136,0.25)"}`}}>
+                {importResult.error
+                  ? <div style={{fontSize:13,color:"var(--red)"}}>{importResult.error}</div>
+                  : <div style={{fontSize:13,color:"var(--green)"}}>
+                      ✓ Imported {importResult.success} of {importResult.total} trades successfully!
+                      {importResult.failed > 0 && <span style={{color:"var(--amber)"}}> ({importResult.failed} failed)</span>}
+                    </div>
+                }
+              </div>
+            )}
+
+            <div style={{display:"flex",justifyContent:"flex-end",marginTop:20}}>
+              <button className="btn-ghost" onClick={()=>{setShowImport(false);setImportResult(null);}}>
+                {importResult?.success ? "Done" : "Cancel"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ════════════════════════════════
           ADD ACCOUNT MODAL
       ════════════════════════════════ */}
