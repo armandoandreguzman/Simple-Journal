@@ -1061,6 +1061,20 @@ export default function TradingJournal() {
   const [showImport, setShowImport] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [parsedTrades, setParsedTrades] = useState([]);
+  const [selectedTrades, setSelectedTrades] = useState([]);
+  const [showTradovate, setShowTradovate] = useState(false);
+  const [tvStep, setTvStep] = useState("login"); // login | select | done
+  const [tvLoading, setTvLoading] = useState(false);
+  const [tvError, setTvError] = useState("");
+  const [tvToken, setTvToken] = useState("");
+  const [tvEnv, setTvEnv] = useState("live");
+  const [tvAccounts, setTvAccounts] = useState([]);
+  const [tvSelAccount, setTvSelAccount] = useState("");
+  const [tvTrades, setTvTrades] = useState([]);
+  const [tvSelected, setTvSelected] = useState([]);
+  const [tvResult, setTvResult] = useState(null);
+  const [tvCreds, setTvCreds] = useState({ username:"", password:"" });
 
   // ── AUTH + DATA LOADING ──
   useEffect(() => {
@@ -1509,6 +1523,14 @@ export default function TradingJournal() {
                 onMouseLeave={e=>{e.currentTarget.style.borderColor="";e.currentTarget.style.color=""}}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 Import FTMO
+              </button>
+              <button
+                onClick={()=>setShowTradovate(true)}
+                style={{display:"flex",alignItems:"center",gap:6,padding:"5px 14px",borderRadius:"var(--rad)",border:"1px solid rgba(99,102,241,0.4)",background:"transparent",color:"#818cf8",fontSize:12,fontWeight:500,cursor:"pointer",transition:"all 0.15s"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="#818cf8";e.currentTarget.style.background="rgba(99,102,241,0.08)"}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(99,102,241,0.4)";e.currentTarget.style.background="transparent"}}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                Sync Tradovate
               </button>
               <div className="live-pip"/>
               {new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}
@@ -3111,26 +3133,83 @@ export default function TradingJournal() {
               </div>
             )}
 
-            {/* File upload */}
-            <div style={{marginBottom:16}}>
-              <div className="f-label" style={{marginBottom:8}}>Upload CSV File</div>
-              <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"2rem",border:"1.5px dashed var(--border2)",borderRadius:"var(--rad-lg)",cursor:"pointer",background:"var(--bg3)",transition:"border-color 0.15s"}}
-                onMouseEnter={e=>e.currentTarget.style.borderColor="var(--teal)"}
-                onMouseLeave={e=>e.currentTarget.style.borderColor=""}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                <div style={{fontSize:13,color:"var(--text2)"}}>Click to select your FTMO CSV file</div>
-                <div style={{fontSize:11,color:"var(--text3)"}}>trading-journal.csv</div>
-                <input type="file" accept=".csv" style={{display:"none"}} onChange={handleImportCSV} disabled={importing}/>
-              </label>
-            </div>
+            {/* Step 1: File upload — only show if no trades parsed yet */}
+            {!parsedTrades.length && !importResult && (
+              <div style={{marginBottom:16}}>
+                <div className="f-label" style={{marginBottom:8}}>Upload CSV File</div>
+                <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,padding:"2rem",border:"1.5px dashed var(--border2)",borderRadius:"var(--rad-lg)",cursor:"pointer",background:"var(--bg3)",transition:"border-color 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor="var(--teal)"}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor=""}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <div style={{fontSize:13,color:"var(--text2)"}}>Click to select your FTMO CSV file</div>
+                  <div style={{fontSize:11,color:"var(--text3)"}}>trading-journal.csv</div>
+                  <input type="file" accept=".csv" style={{display:"none"}} onChange={handleImportCSV} disabled={importing}/>
+                </label>
+              </div>
+            )}
 
-            {/* Status */}
+            {/* Step 2: Trade selector */}
+            {parsedTrades.length > 0 && !importResult && (
+              <div style={{marginBottom:16}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                  <div className="f-label">{parsedTrades.length} trades found — select which to import</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button className="btn-sm" onClick={()=>setSelectedTrades(parsedTrades.map((_,i)=>i))}>All</button>
+                    <button className="btn-sm" onClick={()=>setSelectedTrades([])}>None</button>
+                  </div>
+                </div>
+                <div style={{maxHeight:280,overflowY:"auto",border:"1px solid var(--border)",borderRadius:"var(--rad)",background:"var(--bg3)"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                    <thead>
+                      <tr style={{borderBottom:"1px solid var(--border)",background:"var(--bg2)"}}>
+                        <th style={{padding:"8px 10px",textAlign:"left",width:32}}></th>
+                        <th style={{padding:"8px 10px",textAlign:"left",color:"var(--text3)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase"}}>Date</th>
+                        <th style={{padding:"8px 10px",textAlign:"left",color:"var(--text3)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase"}}>Symbol</th>
+                        <th style={{padding:"8px 10px",textAlign:"left",color:"var(--text3)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase"}}>Dir</th>
+                        <th style={{padding:"8px 10px",textAlign:"right",color:"var(--text3)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase"}}>P&L</th>
+                        <th style={{padding:"8px 10px",textAlign:"right",color:"var(--text3)",fontSize:10,letterSpacing:"0.08em",textTransform:"uppercase"}}>Pips</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedTrades.map((t,i)=>(
+                        <tr key={i} style={{borderBottom:"1px solid var(--border)",cursor:"pointer",background:selectedTrades.includes(i)?"rgba(0,212,180,0.04)":"transparent"}}
+                          onClick={()=>toggleTradeSelect(i)}>
+                          <td style={{padding:"8px 10px"}}>
+                            <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${selectedTrades.includes(i)?"var(--teal)":"var(--border2)"}`,background:selectedTrades.includes(i)?"var(--teal)":"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              {selectedTrades.includes(i)&&<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                            </div>
+                          </td>
+                          <td style={{padding:"8px 10px",color:"var(--text2)",fontFamily:"var(--mono)",fontSize:11}}>{t.date}</td>
+                          <td style={{padding:"8px 10px",fontWeight:600,color:"var(--text)"}}>{t.symbol}</td>
+                          <td style={{padding:"8px 10px"}}>
+                            <span style={{padding:"2px 8px",borderRadius:999,fontSize:10,fontWeight:600,background:t.tradeType==="Long"?"var(--green-faint)":"var(--red-faint)",color:t.tradeType==="Long"?"var(--green)":"var(--red)"}}>
+                              {t.tradeType}
+                            </span>
+                          </td>
+                          <td style={{padding:"8px 10px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:600,color:t.netPnL>=0?"var(--green)":"var(--red)"}}>
+                            {t.netPnL>=0?"+":""}{t.netPnL?.toFixed(2)}
+                          </td>
+                          <td style={{padding:"8px 10px",textAlign:"right",fontFamily:"var(--mono)",fontSize:11,color:"var(--text2)"}}>
+                            {t.pips>=0?"+":""}{t.pips?.toFixed(1)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{marginTop:8,fontSize:11,color:"var(--text3)"}}>{selectedTrades.length} of {parsedTrades.length} selected</div>
+              </div>
+            )}
+
+            {/* Importing spinner */}
             {importing && (
               <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"var(--teal-faint)",borderRadius:"var(--rad)",border:"1px solid rgba(0,212,180,0.2)"}}>
                 <div style={{width:16,height:16,border:"2px solid var(--teal-faint)",borderTop:"2px solid var(--teal)",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-                <span style={{fontSize:13,color:"var(--teal)"}}>Importing trades…</span>
+                <span style={{fontSize:13,color:"var(--teal)"}}>Importing {selectedTrades.length} trades…</span>
               </div>
             )}
+
+            {/* Result */}
             {importResult && !importing && (
               <div style={{padding:"12px 16px",borderRadius:"var(--rad)",background:importResult.error?"var(--red-faint)":"var(--green-faint)",border:`1px solid ${importResult.error?"rgba(232,81,74,0.25)":"rgba(15,190,136,0.25)"}`}}>
                 {importResult.error
@@ -3143,11 +3222,161 @@ export default function TradingJournal() {
               </div>
             )}
 
-            <div style={{display:"flex",justifyContent:"flex-end",marginTop:20}}>
-              <button className="btn-ghost" onClick={()=>{setShowImport(false);setImportResult(null);}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:20}}>
+              <button className="btn-ghost" onClick={()=>{setShowImport(false);setImportResult(null);setParsedTrades([]);setSelectedTrades([]);}}>
                 {importResult?.success ? "Done" : "Cancel"}
               </button>
+              {parsedTrades.length > 0 && !importResult && !importing && (
+                <button className="btn-teal" onClick={confirmImport} disabled={!selectedTrades.length}>
+                  Import {selectedTrades.length} Trade{selectedTrades.length!==1?"s":""}
+                </button>
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════
+          TRADOVATE SYNC MODAL
+      ════════════════════════════════ */}
+      {showTradovate && (
+        <div className="overlay" onClick={resetTradovate}>
+          <div className="modal" style={{maxWidth:520}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-hdr">
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div className="modal-title">Sync Tradovate</div>
+                <span style={{fontSize:10,padding:"2px 8px",borderRadius:999,background:"rgba(99,102,241,0.15)",color:"#818cf8",fontWeight:600}}>LIVE</span>
+              </div>
+              <button className="modal-close" onClick={resetTradovate}>×</button>
+            </div>
+
+            {/* STEP 1: Login */}
+            {tvStep === "login" && (
+              <>
+                <div style={{background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:"var(--rad)",padding:"12px 16px",marginBottom:16,fontSize:12,color:"var(--text2)",lineHeight:1.6}}>
+                  Enter your <strong style={{color:"var(--text)"}}>Tradovate</strong> login credentials. Your password is sent securely to our server, exchanged for an access token, and never stored.
+                </div>
+                <div className="f-group" style={{marginBottom:12}}>
+                  <label className="f-label">Tradovate Username</label>
+                  <input className="f-input" placeholder="your@email.com or username" value={tvCreds.username}
+                    onChange={e=>setTvCreds(p=>({...p,username:e.target.value}))}
+                    onKeyDown={e=>e.key==="Enter"&&tradovateLogin()}/>
+                </div>
+                <div className="f-group" style={{marginBottom:16}}>
+                  <label className="f-label">Tradovate Password</label>
+                  <input className="f-input" type="password" placeholder="••••••••" value={tvCreds.password}
+                    onChange={e=>setTvCreds(p=>({...p,password:e.target.value}))}
+                    onKeyDown={e=>e.key==="Enter"&&tradovateLogin()}/>
+                </div>
+                {tvError && <div style={{padding:"10px 14px",borderRadius:"var(--rad)",background:"var(--red-faint)",border:"1px solid rgba(232,81,74,0.25)",color:"var(--red)",fontSize:12,marginBottom:14}}>{tvError}</div>}
+                <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
+                  <button className="btn-ghost" onClick={resetTradovate}>Cancel</button>
+                  <button className="btn-teal" onClick={tradovateLogin} disabled={tvLoading||!tvCreds.username||!tvCreds.password}>
+                    {tvLoading ? "Connecting…" : "Connect →"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* STEP 2: Select account + fetch */}
+            {tvStep === "select" && (
+              <>
+                <div style={{padding:"10px 14px",borderRadius:"var(--rad)",background:"var(--green-faint)",border:"1px solid rgba(15,190,136,0.25)",color:"var(--green)",fontSize:12,marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+                  ✓ Connected to Tradovate {tvEnv === "live" ? "Live" : "Demo"}
+                </div>
+                {tvAccounts.length > 1 && (
+                  <div className="f-group" style={{marginBottom:16}}>
+                    <label className="f-label">Select Account</label>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                      {tvAccounts.map(acc=>(
+                        <button key={acc.id}
+                          onClick={()=>setTvSelAccount(String(acc.id))}
+                          style={{padding:"7px 16px",borderRadius:"var(--rad)",border:`1px solid ${tvSelAccount===String(acc.id)?"var(--teal)":"var(--border2)"}`,background:tvSelAccount===String(acc.id)?"var(--teal-faint)":"transparent",color:tvSelAccount===String(acc.id)?"var(--teal)":"var(--text2)",fontSize:12,cursor:"pointer"}}>
+                          {acc.nickname || acc.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {tvError && <div style={{padding:"10px 14px",borderRadius:"var(--rad)",background:"var(--red-faint)",border:"1px solid rgba(232,81,74,0.25)",color:"var(--red)",fontSize:12,marginBottom:14}}>{tvError}</div>}
+                <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
+                  <button className="btn-ghost" onClick={resetTradovate}>Cancel</button>
+                  <button className="btn-teal" onClick={tradovateFetchTrades} disabled={tvLoading}>
+                    {tvLoading ? "Fetching trades…" : "Fetch Trades →"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* STEP 3: Select trades to import */}
+            {tvStep === "confirm" && (
+              <>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                  <div className="f-label">{tvTrades.length} trades found — select which to import</div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button className="btn-sm" onClick={()=>setTvSelected(tvTrades.map((_,i)=>i))}>All</button>
+                    <button className="btn-sm" onClick={()=>setTvSelected([])}>None</button>
+                  </div>
+                </div>
+                <div style={{maxHeight:280,overflowY:"auto",border:"1px solid var(--border)",borderRadius:"var(--rad)",background:"var(--bg3)",marginBottom:14}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                    <thead>
+                      <tr style={{borderBottom:"1px solid var(--border)",background:"var(--bg2)"}}>
+                        <th style={{padding:"8px 10px",width:32}}></th>
+                        <th style={{padding:"8px 10px",textAlign:"left",color:"var(--text3)",fontSize:10,textTransform:"uppercase"}}>Date</th>
+                        <th style={{padding:"8px 10px",textAlign:"left",color:"var(--text3)",fontSize:10,textTransform:"uppercase"}}>Symbol</th>
+                        <th style={{padding:"8px 10px",textAlign:"left",color:"var(--text3)",fontSize:10,textTransform:"uppercase"}}>Dir</th>
+                        <th style={{padding:"8px 10px",textAlign:"left",color:"var(--text3)",fontSize:10,textTransform:"uppercase"}}>Time</th>
+                        <th style={{padding:"8px 10px",textAlign:"right",color:"var(--text3)",fontSize:10,textTransform:"uppercase"}}>Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tvTrades.map((t,i)=>(
+                        <tr key={i} style={{borderBottom:"1px solid var(--border)",cursor:"pointer",background:tvSelected.includes(i)?"rgba(0,212,180,0.04)":"transparent"}}
+                          onClick={()=>setTvSelected(p=>p.includes(i)?p.filter(x=>x!==i):[...p,i])}>
+                          <td style={{padding:"8px 10px"}}>
+                            <div style={{width:16,height:16,borderRadius:4,border:`2px solid ${tvSelected.includes(i)?"var(--teal)":"var(--border2)"}`,background:tvSelected.includes(i)?"var(--teal)":"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              {tvSelected.includes(i)&&<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                            </div>
+                          </td>
+                          <td style={{padding:"8px 10px",color:"var(--text2)",fontFamily:"var(--mono)",fontSize:11}}>{t.date}</td>
+                          <td style={{padding:"8px 10px",fontWeight:600,color:"var(--text)"}}>{t.symbol}</td>
+                          <td style={{padding:"8px 10px"}}>
+                            <span style={{padding:"2px 8px",borderRadius:999,fontSize:10,fontWeight:600,background:t.tradeType==="Long"?"var(--green-faint)":"var(--red-faint)",color:t.tradeType==="Long"?"var(--green)":"var(--red)"}}>
+                              {t.tradeType}
+                            </span>
+                          </td>
+                          <td style={{padding:"8px 10px",color:"var(--text3)",fontFamily:"var(--mono)",fontSize:11}}>{t.entryTime}</td>
+                          <td style={{padding:"8px 10px",textAlign:"right",color:"var(--text2)",fontFamily:"var(--mono)"}}>{t.lotSize}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>{tvSelected.length} of {tvTrades.length} selected</div>
+                {tvError && <div style={{padding:"10px 14px",borderRadius:"var(--rad)",background:"var(--red-faint)",border:"1px solid rgba(232,81,74,0.25)",color:"var(--red)",fontSize:12,marginBottom:14}}>{tvError}</div>}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <button className="btn-ghost" onClick={resetTradovate}>Cancel</button>
+                  <button className="btn-teal" onClick={tradovateImport} disabled={tvLoading||!tvSelected.length}>
+                    {tvLoading ? "Importing…" : `Import ${tvSelected.length} Trade${tvSelected.length!==1?"s":""}`}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* STEP 4: Done */}
+            {tvStep === "done" && tvResult && (
+              <>
+                <div style={{padding:"16px",borderRadius:"var(--rad)",background:"var(--green-faint)",border:"1px solid rgba(15,190,136,0.25)",textAlign:"center",marginBottom:16}}>
+                  <div style={{fontSize:24,marginBottom:8}}>✓</div>
+                  <div style={{fontSize:14,color:"var(--green)",fontWeight:600}}>Imported {tvResult.success} trades successfully!</div>
+                  {tvResult.failed > 0 && <div style={{fontSize:12,color:"var(--amber)",marginTop:4}}>{tvResult.failed} failed</div>}
+                </div>
+                <div style={{display:"flex",justifyContent:"flex-end"}}>
+                  <button className="btn-teal" onClick={resetTradovate}>Done</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
