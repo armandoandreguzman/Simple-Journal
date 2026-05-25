@@ -4,10 +4,13 @@
 export async function POST(request) {
   const { action, username, password, accessToken, accountId } = await request.json();
 
-  const DEMO_URL = "https://demo.tradovateapi.com/v1";
-  const LIVE_URL = "https://live.tradovateapi.com/v1";
+  // Tradovate endpoints — prop firms like Lucid use the md endpoint
+  const URLS = [
+    "https://live.tradovateapi.com/v1",
+    "https://md.tradovateapi.com/v1",
+    "https://demo.tradovateapi.com/v1",
+  ];
 
-  // Try live first, fall back to demo
   const tryAuth = async (baseUrl) => {
     const res = await fetch(`${baseUrl}/auth/accesstokenrequest`, {
       method: "POST",
@@ -17,8 +20,8 @@ export async function POST(request) {
         password: password,
         appId: "Simple Journal",
         appVersion: "1.0",
-        cid: 0,
-        sec: "",
+        cid: 8,
+        sec: "e126443c-57ca-4bfb-8a6b-2ba3c98c0946",
       }),
     });
     return res;
@@ -27,24 +30,28 @@ export async function POST(request) {
   // ── ACTION: LOGIN ──
   if (action === "login") {
     try {
-      // Try live environment first
-      let res = await tryAuth(LIVE_URL);
-      let data = await res.json();
+      let data = null;
       let env = "live";
+      let successUrl = URLS[0];
 
-      // If live fails, try demo
-      if (!res.ok || data.errorText || !data.accessToken) {
-        res = await tryAuth(DEMO_URL);
-        data = await res.json();
-        env = "demo";
+      // Try each URL until one works
+      for (const url of URLS) {
+        const res = await tryAuth(url);
+        const d = await res.json();
+        if (d.accessToken && !d.errorText) {
+          data = d;
+          successUrl = url;
+          env = url.includes("demo") ? "demo" : "live";
+          break;
+        }
       }
 
-      if (data.errorText || !data.accessToken) {
-        return Response.json({ error: data.errorText || "Login failed. Check your credentials." }, { status: 401 });
+      if (!data || !data.accessToken) {
+        return Response.json({ error: "Login failed. Please check your Tradovate username and password." }, { status: 401 });
       }
 
       // Get accounts list
-      const baseUrl = env === "live" ? LIVE_URL : DEMO_URL;
+      const baseUrl = successUrl;
       const accRes = await fetch(`${baseUrl}/account/list`, {
         headers: { "Authorization": `Bearer ${data.accessToken}` }
       });
@@ -68,7 +75,7 @@ export async function POST(request) {
   if (action === "trades") {
     try {
       const env = request.headers.get("x-tradovate-env") || "live";
-      const baseUrl = env === "live" ? LIVE_URL : DEMO_URL;
+      // baseUrl already set above
 
       // Get fills (executed trades) for the account
       const fillsRes = await fetch(`${baseUrl}/fill/list`, {
