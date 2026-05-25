@@ -1321,6 +1321,76 @@ export default function TradingJournal() {
     return urlData.publicUrl;
   };
 
+  // ── TRADOVATE SYNC FUNCTIONS ──
+  const resetTradovate = () => {
+    setShowTradovate(false); setTvStep("login"); setTvLoading(false);
+    setTvError(""); setTvToken(""); setTvAccounts([]); setTvSelAccount("");
+    setTvTrades([]); setTvSelected([]); setTvResult(null);
+    setTvCreds({ username:"", password:"" });
+  };
+
+  const tradovateLogin = async () => {
+    setTvLoading(true); setTvError("");
+    try {
+      const res = await fetch("/api/tradovate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "login", username: tvCreds.username, password: tvCreds.password }),
+      });
+      const data = await res.json();
+      if (data.error) { setTvError(data.error); setTvLoading(false); return; }
+      setTvToken(data.accessToken);
+      setTvEnv(data.env);
+      setTvAccounts(data.accounts || []);
+      if (data.accounts?.length === 1) setTvSelAccount(String(data.accounts[0].id));
+      setTvStep("select");
+    } catch(e) { setTvError("Connection failed: " + e.message); }
+    setTvLoading(false);
+  };
+
+  const tradovateFetchTrades = async () => {
+    setTvLoading(true); setTvError("");
+    try {
+      const res = await fetch("/api/tradovate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-tradovate-env": tvEnv },
+        body: JSON.stringify({ action: "trades", accessToken: tvToken, accountId: tvSelAccount }),
+      });
+      const data = await res.json();
+      if (data.error) { setTvError(data.error); setTvLoading(false); return; }
+      setTvTrades(data.trades || []);
+      setTvSelected((data.trades || []).map((_,i) => i));
+      setTvStep("confirm");
+    } catch(e) { setTvError("Failed: " + e.message); }
+    setTvLoading(false);
+  };
+
+  const tradovateImport = async () => {
+    if (!tvSelected.length || !user) return;
+    setTvLoading(true);
+    const toImport = tvTrades.filter((_,i) => tvSelected.includes(i));
+    let success = 0, failed = 0;
+    for (const t of toImport) {
+      const analysis = analyzeTradeWithAI(t);
+      const { error } = await supabase.from("trades").insert({
+        user_id: user.id,
+        account_id: activeAccountId !== "all" ? activeAccountId : null,
+        symbol: t.symbol, date: t.date,
+        trade_type: t.tradeType, trade_status: t.tradeStatus,
+        entry_time: t.entryTime, lot_size: t.lotSize,
+        open_price: t.openPrice, net_pnl: t.netPnL,
+        commissions: t.commissions, followed_rules: t.followedRules,
+        mistake_type: t.mistakeType, confidence_level: t.confidenceLevel,
+        ltfc_tags: [], notes: t.notes, ai_analysis: analysis,
+      });
+      if (!error) success++; else failed++;
+    }
+    await loadTrades(user.id);
+    setTvResult({ success, failed, total: toImport.length });
+    setTvStep("done");
+    setTvLoading(false);
+  };
+
   // ── FTMO CSV IMPORT ──
   const parseFTMOcsv = (text) => {
     const lines = text.trim().split("\n").filter(l => l.trim());
