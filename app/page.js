@@ -1392,63 +1392,62 @@ export default function TradingJournal() {
   };
 
   // ── FTMO CSV IMPORT ──
+  // ── TRADOVATE CSV IMPORT ──
   const parseFTMOcsv = (text) => {
     const lines = text.trim().split("\n").filter(l => l.trim());
     if (lines.length < 2) return [];
-    // skip header
     const rows = lines.slice(1);
     const trades = [];
     for (const line of rows) {
-      // handle quoted fields
-      const cols = [];
-      let cur = "", inQ = false;
-      for (const ch of line) {
-        if (ch === '"') { inQ = !inQ; }
-        else if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ""; }
-        else cur += ch;
-      }
-      cols.push(cur.trim());
-      // FTMO columns: Ticket,Open,Type,Volume,Symbol,Price,SL,TP,Close,Price,Swap,Commissions,Profit,Pips,Duration
-      if (cols.length < 13) continue;
-      const openDt = cols[1]?.replace(/"/g,"") || "";
-      const date = openDt.split(" ")[0] || "";
-      const entryTime = openDt.split(" ")[1]?.slice(0,5) || "";
-      const closeDt = cols[8]?.replace(/"/g,"") || "";
-      const exitTime = closeDt.split(" ")[1]?.slice(0,5) || "";
-      const type = cols[2]?.toLowerCase() || "";
-      const symbol = cols[4]?.replace(".sim","").replace(/"/g,"") || "";
-      const openPrice = parseFloat(cols[5]) || 0;
-      const sl = parseFloat(cols[6]) || 0;
-      const tp = parseFloat(cols[7]) || 0;
-      const closePrice = parseFloat(cols[9]) || 0;
-      const commissions = parseFloat(cols[11]) || 0;
-      const profit = parseFloat(cols[12]) || 0;
-      const pips = parseFloat(cols[13]) || 0;
-      const volume = parseFloat(cols[3]) || 0;
-      // Use pips directly as R-multiple proxy
-      // FTMO pips column already represents trade distance in meaningful units
-      let resultR = pips ? +pips.toFixed(2) : "";
-
+      const cols = line.split(",").map(c => c.trim().replace(/"/g, ""));
+      if (cols.length < 9) continue;
+      const symbol    = cols[0].replace(/[A-Z]\d+$/, "").toUpperCase();
+      const qty       = parseFloat(cols[6]) || 0;
+      const buyPrice  = parseFloat(cols[7]) || 0;
+      const sellPrice = parseFloat(cols[8]) || 0;
+      const pnlRaw    = cols[9].replace(/[$,]/g, "");
+      const netPnL    = parseFloat(pnlRaw) || 0;
+      const boughtTs  = cols[10] || "";
+      const soldTs    = cols[11] || "";
+      const parseTs = (ts) => {
+        const [datePart, timePart] = ts.split(" ");
+        if (!datePart) return { date: "", time: "" };
+        const [mo, dy, yr] = datePart.split("/");
+        const date = `${yr}-${mo?.padStart(2,"0")}-${dy?.padStart(2,"0")}`;
+        const time = timePart?.slice(0, 5) || "";
+        return { date, time };
+      };
+      const entry = parseTs(boughtTs);
+      const exit  = parseTs(soldTs);
+      const entryMs = new Date(boughtTs).getTime();
+      const exitMs  = new Date(soldTs).getTime();
+      const tradeType  = entryMs <= exitMs ? "Long" : "Short";
+      const openPrice  = tradeType === "Long" ? buyPrice : sellPrice;
+      const closePrice = tradeType === "Long" ? sellPrice : buyPrice;
       trades.push({
-        date, entryTime, exitTime,
-        symbol: symbol.toUpperCase(),
-        tradeType: type === "buy" ? "Long" : "Short",
-        openPrice, closePrice,
-        stopLoss: sl, takeProfit: tp,
-        pips, lotSize: volume,
-        commissions: Math.abs(commissions),
-        netPnL: profit,
-        grossPnL: profit + Math.abs(commissions),
-        resultR: resultR || "",
-        tradeStatus: profit > 0 ? "T/P" : profit < 0 ? "S/L" : "B/E",
-        followedRules: "Yes", mistakeType: "None",
-        confidenceLevel: 7, ltfcTags: [],
-        notes: `Imported from FTMO · Ticket: ${cols[0]}`,
+        date:       entry.date,
+        entryTime:  entry.time,
+        exitTime:   exit.time,
+        symbol,
+        tradeType,
+        openPrice,
+        closePrice,
+        lotSize:    qty,
+        netPnL,
+        grossPnL:   netPnL,
+        commissions: 0,
+        pips:       0,
+        resultR:    "",
+        tradeStatus: netPnL > 0 ? "T/P" : netPnL < 0 ? "S/L" : "B/E",
+        followedRules: "Yes",
+        mistakeType:   "None",
+        confidenceLevel: 7,
+        ltfcTags: [],
+        notes: `Imported from Tradovate · ${symbol} · ${cols[10]}`,
       });
     }
     return trades;
   };
-
   const handleImportCSV = async (e) => {
     const file = e.target.files[0];
     if (!file || !user) return;
