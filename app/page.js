@@ -2235,8 +2235,10 @@ export default function TradingJournal() {
                             <td style={{fontSize:11}}>{t.emotionBefore||"—"}</td>
                             <td style={{fontSize:11,color:t.mistakeType!=="None"?"var(--red)":"var(--text3)"}}>{t.mistakeType}</td>
                             <td style={{display:"flex",gap:6,alignItems:"center"}}>
-                              <button className="btn-sm" onClick={()=>{setEditMode(false);setDetailTrade(t)}}>View</button>
-                              <button className="btn-sm" style={{color:"var(--teal)"}} onClick={()=>openEdit(t)}>Edit</button>
+<button className="btn-sm" onClick={()=>{setEditMode(false);setDetailTrade(t)}}>View</button>
+<button className="btn-sm" style={{color:"var(--teal)"}} onClick={()=>openEdit(t)}>Edit</button>
+<button className="btn-sm btn-danger" onClick={()=>{ if(window.confirm("Delete this trade?")) deleteTrade(t.id); }}>Delete</button>
+
                             </td>
                           </tr>
                         ))}
