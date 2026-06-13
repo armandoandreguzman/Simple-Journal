@@ -2826,37 +2826,92 @@ export default function TradingJournal() {
                 });
                 const sessData = Object.entries(sessMap).map(([k,v])=>({
                   label:k, value:+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2),
-                  display:`${+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2)}R`
-              const ruleMap = {Yes:[],Partially:[],No:[]};
-activeTrades.forEach(t => { const r=t.followedRules||"Yes"; if(ruleMap[r]) ruleMap[r].push(parseFloat(t.resultR)||0); });
-const ruleData = Object.entries(ruleMap).map(([k,v])=>({ label:k, value:v.length?+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2):0, display:v.length?(+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1))+"R":"—" }));
-activeTrades.forEach(t => { const r=t.followedRules||"Yes"; if(ruleMap[r]) ruleMap[r].push(parseFloat(t.resultR)||0); });
-const ruleData = Object.entries(ruleMap).map(([k,v])=>({ label:k, value:v.length?+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2):0, display:v.length?`${+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)}R`:"—" }));
-{ title:"Rule-Following vs Avg R", accent:"blue", content:<BarChart data={ruleData} colorFn={d=>d.label==="Yes"?"#0fbe88":d.label==="No"?"#e8514a":"#e8a838"}/> },
-{ title:"P&L by Open Time Hour", accent:"teal", content:(() => {
+               display:`${+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2)}R`
+  })).sort((a,b)=>b.value-a.value);
+
+  // ── 3. Rule-Following vs Avg R ──
+  const ruleMap = {Yes:[],Partially:[],No:[]};
+  activeTrades.forEach(t => {
+    const r = t.followedRules || "Yes";
+    if (ruleMap[r]) ruleMap[r].push(parseFloat(t.resultR)||0);
+  });
+  const ruleData = Object.entries(ruleMap).map(([k,v])=>({
+    label:k,
+    value: v.length ? +(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2) : 0,
+    display: v.length ? (+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)) + "R" : "—"
+  }));
+
+  // ── 4. P&L by Hour ──
   const hourMap = {};
-  activeTrades.forEach(t => { if(!t.entryTime) return; const h=t.entryTime.slice(0,2)+":00"; if(!hourMap[h]) hourMap[h]=0; hourMap[h]+=parseFloat(t.netPnL)||0; });
-  const data = Object.entries(hourMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([k,v])=>({label:k,value:+v.toFixed(2),display:`$${v.toFixed(0)}`}));
-  return data.length ? <BarChart data={data}/> : noData("P&L by Hour");
-})() },
-{ title:"P&L by Direction", accent:"purple", content:(() => {
-  const map={Long:0,Short:0};
-  activeTrades.forEach(t=>{if(map[t.tradeType]!==undefined) map[t.tradeType]+=parseFloat(t.netPnL)||0;});
-  return <BarChart data={Object.entries(map).map(([k,v])=>({label:k,value:+v.toFixed(2),display:`$${v.toFixed(0)}`}))} colorFn={d=>d.label==="Long"?"#0fbe88":"#e8514a"}/>;
-})() },
-{ title:"P&L by Lot Size", accent:"blue", content:(() => {
-  const map={};
-  activeTrades.forEach(t=>{const lot=parseFloat(t.lotSize)||0;if(!lot)return;const k=String(lot);if(!map[k])map[k]=0;map[k]+=parseFloat(t.netPnL)||0;});
-  const data=Object.entries(map).sort((a,b)=>parseFloat(a[0])-parseFloat(b[0])).map(([k,v])=>({label:k,value:+v.toFixed(2),display:`$${v.toFixed(0)}`}));
-  return data.length ? <BarChart data={data}/> : noData("P&L by Lot Size");
-})() },
-{ title:"Avg Duration: Wins vs Losses", accent:"teal", content:(() => {
-  const parseDur=(entry,exit)=>{if(!entry||!exit)return null;const[eh,em]=entry.split(":").map(Number);const[xh,xm]=exit.split(":").map(Number);const d=(xh*60+xm)-(eh*60+em);return d>0?d:null;};
-  const wins=[],losses=[];
-  activeTrades.forEach(t=>{const d=parseDur(t.entryTime,t.exitTime);if(d===null)return;if((parseFloat(t.netPnL)||0)>0)wins.push(d);else losses.push(d);});
-  const avg=arr=>arr.length?+(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1):0;
-  return <BarChart data={[{label:"Wins",value:avg(wins),display:`${avg(wins)}m`},{label:"Losses",value:avg(losses),display:`${avg(losses)}m`}]} colorFn={d=>d.label==="Wins"?"#0fbe88":"#e8514a"}/>;
-})() },
+  activeTrades.forEach(t => {
+    if (!t.entryTime) return;
+    const h = t.entryTime.slice(0,2) + ":00";
+    if (!hourMap[h]) hourMap[h] = 0;
+    hourMap[h] += parseFloat(t.netPnL) || 0;
+  });
+  const hourData = Object.entries(hourMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([k,v])=>({
+    label: k, value: +v.toFixed(2), display: "$" + v.toFixed(0)
+  }));
+
+  // ── 5. P&L by Direction ──
+  const dirMap = {Long:0, Short:0};
+  activeTrades.forEach(t => {
+    if (dirMap[t.tradeType] !== undefined) dirMap[t.tradeType] += parseFloat(t.netPnL)||0;
+  });
+  const dirData = Object.entries(dirMap).map(([k,v])=>({
+    label: k, value: +v.toFixed(2), display: "$" + v.toFixed(0)
+  }));
+
+  // ── 6. P&L by Lot Size ──
+  const lotMap = {};
+  activeTrades.forEach(t => {
+    const lot = parseFloat(t.lotSize)||0;
+    if (!lot) return;
+    const k = String(lot);
+    if (!lotMap[k]) lotMap[k] = 0;
+    lotMap[k] += parseFloat(t.netPnL)||0;
+  });
+  const lotData = Object.entries(lotMap).sort((a,b)=>parseFloat(a[0])-parseFloat(b[0])).map(([k,v])=>({
+    label: k, value: +v.toFixed(2), display: "$" + v.toFixed(0)
+  }));
+
+  // ── 7. Avg Duration Wins vs Losses ──
+  const durWins = [], durLosses = [];
+  activeTrades.forEach(t => {
+    if (!t.entryTime || !t.exitTime) return;
+    const [eh,em] = t.entryTime.split(":").map(Number);
+    const [xh,xm] = t.exitTime.split(":").map(Number);
+    const d = (xh*60+xm) - (eh*60+em);
+    if (d <= 0) return;
+    if ((parseFloat(t.netPnL)||0) > 0) durWins.push(d);
+    else durLosses.push(d);
+  });
+  const avgDur = arr => arr.length ? +(arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1) : 0;
+  const durData = [
+    { label: "Wins", value: avgDur(durWins), display: avgDur(durWins) + "m" },
+    { label: "Losses", value: avgDur(durLosses), display: avgDur(durLosses) + "m" },
+  ];
+
+  const charts = [
+    { title:"Win Rate by Setup Type", accent:"teal", content:<BarChart data={setupData} colorFn={d=>d.value>=50?"#0fbe88":"#e8514a"}/> },
+    { title:"Avg R by Session", accent:"blue", content:<BarChart data={sessData}/> },
+    { title:"Rule-Following vs Avg R", accent:"blue", content:<BarChart data={ruleData} colorFn={d=>d.label==="Yes"?"#0fbe88":d.label==="No"?"#e8514a":"#e8a838"}/> },
+    { title:"P&L by Open Time Hour", accent:"teal", content: hourData.length ? <BarChart data={hourData}/> : noData("P&L by Hour") },
+    { title:"P&L by Direction", accent:"purple", content:<BarChart data={dirData} colorFn={d=>d.label==="Long"?"#0fbe88":"#e8514a"}/> },
+    { title:"P&L by Lot Size", accent:"blue", content: lotData.length ? <BarChart data={lotData}/> : noData("P&L by Lot Size") },
+    { title:"Avg Duration: Wins vs Losses", accent:"teal", content:<BarChart data={durData} colorFn={d=>d.label==="Wins"?"#0fbe88":"#e8514a"}/> },
+  ];
+
+  return (
+    <div className="ana-grid">
+      {charts.map(({title,accent,content})=>(
+        <div key={title} className="sec-card" style={{marginBottom:0}}>
+          <div className="sec-head"><div className={`sec-accent ${accent}`}/><div className="sec-title">{title}</div></div>
+          <div style={{padding:"0.75rem 1rem 0.5rem"}}>{content}</div>
+        </div>
+      ))}
+    </div>
+  );
                
       {/* ════════════════════════════════
           TRADE DETAIL MODAL
