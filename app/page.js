@@ -2828,6 +2828,9 @@ export default function TradingJournal() {
                   label:k, value:+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2),
                   display:`${+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2)}R`
                 })).sort((a,b)=>b.value-a.value);
+                const ruleMap = {Yes:[],Partially:[],No:[]};
+activeTrades.forEach(t => { const r=t.followedRules||"Yes"; if(ruleMap[r]) ruleMap[r].push(parseFloat(t.resultR)||0); });
+const ruleData = Object.entries(ruleMap).map(([k,v])=>({ label:k, value:v.length?+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2):0, display:v.length?`${+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(1)}R`:"—" }));
 { title:"Rule-Following vs Avg R", accent:"blue", content:<BarChart data={ruleData} colorFn={d=>d.label==="Yes"?"#0fbe88":d.label==="No"?"#e8514a":"#e8a838"}/> },
 { title:"P&L by Open Time Hour", accent:"teal", content:(() => {
   const hourMap = {};
