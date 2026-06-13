@@ -2911,11 +2911,16 @@ export default function TradingJournal() {
         </div>
       ))}
     </div>
-  );
-               
+  );})()}
+            </>}
+          </div>
+        </main>
+      </div>
+
       {/* ════════════════════════════════
           TRADE DETAIL MODAL
       ════════════════════════════════ */}
+ 
       {detailTrade && (
         <div className="overlay" onClick={()=>{setDetailTrade(null);setEditMode(false)}}>
           <div className="modal" style={{maxWidth:700,width:"100%"}} onClick={e=>e.stopPropagation()}>
